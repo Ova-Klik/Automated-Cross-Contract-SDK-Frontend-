@@ -124,6 +124,9 @@ describe('executeWithRestore', () => {
   it('submits transaction directly when simulation succeeds (no restore)', async () => {
     vi.mocked(server.simulateTransaction).mockResolvedValue(makeSuccessResponse() as never)
     vi.mocked(server.sendTransaction).mockResolvedValue({ hash: 'tx-hash-123' } as never)
+    vi.mocked(server.getTransaction).mockResolvedValue({
+      status: rpc.Api.GetTransactionStatus.SUCCESS,
+    } as never)
 
     const wallet = makeWallet()
     const onOriginalSubmitted = vi.fn()
@@ -229,15 +232,18 @@ describe('executeWithRestore', () => {
       events: [],
     } as never)
 
+    const onRestoreFailed = vi.fn()
     const result = await executeWithRestore({
       server,
       transaction: makeSampleTx(),
       wallet: makeWallet(),
       config: defaultConfig,
+      onRestoreFailed,
     })
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Unexpected simulation response type')
+    expect(onRestoreFailed).toHaveBeenCalledWith('Unexpected simulation response type')
   })
 
   it('returns error when restore transaction fails on-chain', async () => {
@@ -260,5 +266,56 @@ describe('executeWithRestore', () => {
     expect(result.success).toBe(false)
     expect(result.restoreTxHash).toBe('restore-hash')
     expect(result.error).toBe('Restore transaction failed')
+  })
+
+  it('calls onRestoreFailed on simulation error response', async () => {
+    const onRestoreFailed = vi.fn()
+    vi.mocked(server.simulateTransaction).mockResolvedValue(makeErrorResponse() as never)
+
+    await executeWithRestore({
+      server,
+      transaction: makeSampleTx(),
+      wallet: makeWallet(),
+      config: defaultConfig,
+      onRestoreFailed,
+    })
+
+    expect(onRestoreFailed).toHaveBeenCalledWith(expect.stringContaining('Simulation error'))
+  })
+
+  it('calls onRestoreFailed when wallet is not connected', async () => {
+    vi.mocked(server.simulateTransaction).mockResolvedValue(makeRestoreResponse() as never)
+
+    const wallet = makeWallet()
+    wallet.isConnected = vi.fn().mockResolvedValue(false)
+
+    const onRestoreFailed = vi.fn()
+    const result = await executeWithRestore({
+      server,
+      transaction: makeSampleTx(),
+      wallet,
+      config: defaultConfig,
+      onRestoreFailed,
+    })
+
+    expect(onRestoreFailed).toHaveBeenCalledWith('Wallet is not connected')
+    expect(result.error).toBe('Wallet is not connected')
+  })
+
+  it('calls onRestoreFailed when catch-all exception occurs', async () => {
+    vi.mocked(server.simulateTransaction).mockRejectedValue(new Error('network error'))
+
+    const onRestoreFailed = vi.fn()
+    const result = await executeWithRestore({
+      server,
+      transaction: makeSampleTx(),
+      wallet: makeWallet(),
+      config: defaultConfig,
+      onRestoreFailed,
+    })
+
+    expect(onRestoreFailed).toHaveBeenCalledWith('network error')
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('network error')
   })
 })

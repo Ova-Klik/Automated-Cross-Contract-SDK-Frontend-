@@ -2,11 +2,23 @@ import React, { useState, useCallback } from 'react'
 import { SorobanResurrectProvider, useSorobanResurrectContext } from '@soroban-resurrect/react-hook'
 import { TransactionBuilder, Operation, Networks, nativeToScVal, rpc } from '@stellar/stellar-sdk'
 
-const RPC_URL = import.meta.env.VITE_RPC_URL ?? 'https://soroban-testnet.stellar.org'
+// Safely read environment variables with fallback defaults
+function getEnvVariable(key: string, fallback: string): string {
+  try {
+    return (import.meta.env as Record<string, string | undefined>)[key] ?? fallback
+  } catch (err) {
+    console.warn(`Failed to read env var ${key}, using fallback:`, err)
+    return fallback
+  }
+}
+
+const RPC_URL = getEnvVariable('VITE_RPC_URL', 'https://soroban-testnet.stellar.org')
 const NETWORK = Networks.TESTNET
-const CONTRACT_ID =
-  import.meta.env.VITE_CONTRACT_ID ?? 'CCJZ5DGASBWQXR5G4GXEJM2Q4FI5L3QJ6TQ3QFJTQH7GJ6KJ3J2Q2K2Q'
-const NETWORK_PASSPHRASE = import.meta.env.VITE_NETWORK_PASSPHRASE ?? NETWORK
+const CONTRACT_ID = getEnvVariable(
+  'VITE_CONTRACT_ID',
+  'CCJZ5DGASBWQXR5G4GXEJM2Q4FI5L3QJ6TQ3QFJTQH7GJ6KJ3J2Q2K2Q',
+)
+const NETWORK_PASSPHRASE = getEnvVariable('VITE_NETWORK_PASSPHRASE', NETWORK)
 const server = new rpc.Server(RPC_URL)
 
 function getStellarWallet(): StellarWallet {

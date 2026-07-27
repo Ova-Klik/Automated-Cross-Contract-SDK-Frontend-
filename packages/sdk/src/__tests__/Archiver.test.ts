@@ -7,6 +7,8 @@ import {
   extractArchivedKeys,
   extractFootprintFromSuccess,
   detectArchivedEntries,
+  detectArchivedKeysViaSimulation,
+  detectArchivedKeysViaDirect,
 } from '../Archiver.js'
 
 function makeMockSuccessResponse(): rpc.Api.SimulateTransactionSuccessResponse {
@@ -172,6 +174,104 @@ describe('Archiver', () => {
       const result = extractFootprintFromSuccess(response)
       expect(result.readOnly).toEqual([])
       expect(result.readWrite).toEqual([])
+    })
+  })
+
+  describe('detectArchivedKeysViaSimulation', () => {
+    it('returns archived keys from restore response', async () => {
+      const mockKey = { toXDR: () => 'base64-key' }
+      const response = {
+        ...makeMockRestoreResponse(),
+        transactionData: {
+          build: () => ({}),
+          getFootprint: () => ({ readOnly: () => [], readWrite: () => [mockKey] }),
+        },
+      }
+
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue(response),
+      } as unknown as rpc.Server
+
+      const mockTx = {} as any
+      const result = await detectArchivedKeysViaSimulation(server, mockTx)
+
+      expect(result.length).toBe(1)
+      expect(result[0].keyBase64).toBe('base64-key')
+    })
+
+    it('returns empty array for success response', async () => {
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue(makeMockSuccessResponse()),
+      } as unknown as rpc.Server
+
+      const result = await detectArchivedKeysViaSimulation(server, {} as any)
+      expect(result).toEqual([])
+    })
+
+    it('returns empty array for error response', async () => {
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue(makeMockErrorResponse()),
+      } as unknown as rpc.Server
+
+      const result = await detectArchivedKeysViaSimulation(server, {} as any)
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('detectArchivedKeysViaDirect', () => {
+    it('throws on simulation error response', async () => {
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue(makeMockErrorResponse()),
+      } as unknown as rpc.Server
+
+      await expect(detectArchivedKeysViaDirect(server, {} as any)).rejects.toThrow('Simulation error')
+    })
+
+    it('throws on restore response', async () => {
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue(makeMockRestoreResponse()),
+      } as unknown as rpc.Server
+
+      await expect(detectArchivedKeysViaDirect(server, {} as any)).rejects.toThrow(
+        'Archived entries already detected via simulation restore response',
+      )
+    })
+
+    it('returns empty when no readWrite entries', async () => {
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue({
+          ...makeMockSuccessResponse(),
+          transactionData: {
+            build: () => ({}),
+            getFootprint: () => ({ readOnly: () => [], readWrite: () => [] }),
+          },
+        }),
+      } as unknown as rpc.Server
+
+      const result = await detectArchivedKeysViaDirect(server, {} as any)
+      expect(result).toEqual([])
+    })
+
+    it('detects archived entries from success response footprint', async () => {
+      const archivedKey = { toXDR: () => 'base64-archived' } as unknown as xdr.LedgerKey
+      const liveKey = { toXDR: () => 'base64-live' } as unknown as xdr.LedgerKey
+
+      const server = {
+        simulateTransaction: vi.fn().mockResolvedValue({
+          ...makeMockSuccessResponse(),
+          transactionData: {
+            build: () => ({}),
+            getFootprint: () => ({ readOnly: () => [], readWrite: () => [liveKey, archivedKey] }),
+          },
+        }),
+        getLedgerEntries: vi.fn().mockResolvedValue({
+          entries: [{ key: liveKey }],
+        }),
+      } as unknown as rpc.Server
+
+      const result = await detectArchivedKeysViaDirect(server, {} as any)
+      expect(result.length).toBe(1)
+      expect(result[0].keyBase64).toBe('base64-archived')
     })
   })
 })

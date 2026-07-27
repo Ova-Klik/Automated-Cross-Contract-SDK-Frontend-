@@ -7,6 +7,8 @@ export {
   extractArchivedKeys,
   extractFootprintFromSuccess,
   detectArchivedEntries,
+  detectArchivedKeysViaSimulation,
+  detectArchivedKeysViaDirect,
 } from './Archiver.js'
 export {
   buildRestoreTransaction,

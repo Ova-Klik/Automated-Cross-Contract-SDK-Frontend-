@@ -1,5 +1,5 @@
+import { rpc, Transaction } from '@stellar/stellar-sdk'
 import { xdr } from '@stellar/stellar-sdk'
-import { rpc } from '@stellar/stellar-sdk'
 import { ArchivedLedgerEntry, SimulateResponse } from './types.js'
 
 /**
@@ -111,16 +111,25 @@ export async function detectArchivedEntries(
     const chunk = ledgerKeys.slice(i, i + chunkSize)
     try {
       const result = await server.getLedgerEntries(...chunk)
-      const knownKeys = new Set((result.entries ?? []).map((e) => e.key.toXDR('base64')))
+      // Build a set of returned entry keys to identify archived ones
+      const knownKeys = new Set<string>()
+      if (result.entries) {
+        for (const entry of result.entries) {
+          knownKeys.add(entry.key.toXDR('base64'))
+        }
+      }
+      // Check each key in the chunk; if not in returned entries, it's archived
       for (const key of chunk) {
-        if (!knownKeys.has(key.toXDR('base64'))) {
+        const keyXdr = key.toXDR('base64')
+        if (!knownKeys.has(keyXdr)) {
           archived.push({
             key,
-            keyBase64: key.toXDR('base64'),
+            keyBase64: keyXdr,
           })
         }
       }
     } catch {
+      // On network error, conservatively treat all keys in chunk as archived
       archived.push(
         ...chunk.map((key) => ({
           key,
@@ -131,4 +140,58 @@ export async function detectArchivedEntries(
   }
 
   return archived
+}
+
+/**
+ * Detects archived keys by simulating the transaction and extracting
+ * archived entries from the footprint.
+ */
+export async function detectArchivedKeysViaSimulation(
+  server: rpc.Server,
+  transaction: Transaction,
+): Promise<ArchivedLedgerEntry[]> {
+  const response = await server.simulateTransaction(transaction)
+
+  if (isRestoreResponse(response)) {
+    return extractArchivedKeys(response)
+  }
+
+  return []
+}
+
+/**
+ * Detects archived keys by querying the ledger directly for keys that
+ * appear in a success simulation footprint.
+ *
+ * This approach first simulates the transaction in success mode (no restore
+ * needed), extracts the footprint keys, then queries the ledger to find
+ * which ones are archived.
+ *
+ * Throws an error if the simulation fails or indicates archived entries.
+ */
+export async function detectArchivedKeysViaDirect(
+  server: rpc.Server,
+  transaction: Transaction,
+): Promise<ArchivedLedgerEntry[]> {
+  const response = await server.simulateTransaction(transaction)
+
+  if (isErrorResponse(response)) {
+    throw new Error(`Simulation error: ${response.error}`)
+  }
+
+  if (isRestoreResponse(response)) {
+    throw new Error('Archived entries already detected via simulation restore response')
+  }
+
+  if (!isSuccessResponse(response)) {
+    throw new Error('Unexpected simulation response type')
+  }
+
+  const { readWrite } = extractFootprintFromSuccess(response)
+
+  if (readWrite.length === 0) {
+    return []
+  }
+
+  return detectArchivedEntries(server, readWrite)
 }

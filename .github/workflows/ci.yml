@@ -7,17 +7,28 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  ci:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
+
       - run: npm ci
-      - run: npm run build
-      - run: npm run lint
-      - run: npm run format
-      - run: npm test
+
       - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run format
+
+      - run: npm test
+
+      - run: npm run build

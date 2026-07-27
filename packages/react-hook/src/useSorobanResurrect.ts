@@ -36,25 +36,27 @@ export interface UseSorobanResurrectReturn {
  * Subscribes to state changes and exposes the full API. Unlike the context
  * provider pattern, this hook manages its own instance and is suitable for
  * use in components that are not wrapped in `SorobanResurrectProvider`.
+ *
+ * When the config prop changes, a new SDK instance is created and
+ * state is reset to idle.
  */
 export function useSorobanResurrect(
   options: UseSorobanResurrectOptions,
 ): UseSorobanResurrectReturn {
   const { config } = options
   const resurrectRef = useRef<SorobanResurrect | null>(null)
+  const prevConfigRef = useRef<SorobanResurrectConfig | null>(null)
   const [state, setState] = useState<RestoreStateInfo>({
     state: 'idle',
     message: '',
   })
 
-  const configStr = JSON.stringify(config)
-  const prevConfigStr = useRef(configStr)
-  if (configStr !== prevConfigStr.current) {
-    prevConfigStr.current = configStr
-    resurrectRef.current = new SorobanResurrect(config)
-  }
-
-  if (!resurrectRef.current) {
+  // Track config changes and reinitialize SDK when config updates
+  if (
+    !prevConfigRef.current ||
+    JSON.stringify(config) !== JSON.stringify(prevConfigRef.current)
+  ) {
+    prevConfigRef.current = config
     resurrectRef.current = new SorobanResurrect(config)
   }
 
@@ -65,7 +67,7 @@ export function useSorobanResurrect(
       setState(info)
     })
     return unsub
-  }, [configStr])
+  }, [JSON.stringify(config)])
 
   const submitWithRestore = useCallback(async (transaction: Transaction, wallet: WalletAdapter) => {
     return resurrectRef.current!.submitWithRestore({ transaction, wallet })
@@ -94,6 +96,6 @@ export function useSorobanResurrect(
     submitWithRestore,
     detectArchivedKeys,
     reset,
-    resurrect: resurrectRef.current,
+    resurrect: resurrectRef.current!,
   }
 }

@@ -11,6 +11,10 @@ export interface SorobanResurrectConfig {
   pollIntervalMs?: number
   /** Timeout in ms when waiting for transaction confirmation. */
   pollTimeoutMs?: number
+  /** Multiplier applied to minResourceFee when building a restore transaction (defaults to 100). */
+  restoreFeeMultiplier?: number
+  /** Method for detecting archived keys: 'simulation' (default) or 'direct'. */
+  archiveDetectionMethod?: 'simulation' | 'direct'
 }
 
 /** Wallet interface that wraps browser or extension wallets (e.g. Freighter). */
@@ -57,6 +61,12 @@ export interface SubmitWithRestoreOptions {
   transaction: Transaction
   /** Wallet adapter used for signing. */
   wallet: WalletAdapter
+  /** Called when restore transaction is ready to be signed. */
+  onSigningRestore?: () => void
+  /** Called after restore transaction is signed and being submitted. */
+  onSubmittingRestore?: () => void
+  /** Called after restore transaction is confirmed and original is ready to sign. */
+  onSigningOriginal?: () => void
   /** Called when archived entries are detected and restoration is required. */
   onRestoreNeeded?: (archivedKeys: ArchivedLedgerEntry[]) => void
   /** Called after the restore transaction is submitted. */

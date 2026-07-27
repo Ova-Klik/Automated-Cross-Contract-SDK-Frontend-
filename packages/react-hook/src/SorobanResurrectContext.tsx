@@ -48,22 +48,24 @@ export interface SorobanResurrectProviderProps {
  * React context provider that instantiates `SorobanResurrect` and
  * subscribes to its state changes. Children can access the API via
  * `useSorobanResurrectContext()`.
+ *
+ * When the config prop changes, a new SDK instance is created and
+ * state is reset to idle.
  */
 export function SorobanResurrectProvider({ config, children }: SorobanResurrectProviderProps) {
   const resurrectRef = useRef<SorobanResurrect | null>(null)
+  const prevConfigRef = useRef<SorobanResurrectConfig | null>(null)
   const [state, setState] = useState<RestoreStateInfo>({
     state: 'idle',
     message: '',
   })
 
-  const configStr = JSON.stringify(config)
-  const prevConfigStr = useRef(configStr)
-  if (configStr !== prevConfigStr.current) {
-    prevConfigStr.current = configStr
-    resurrectRef.current = new SorobanResurrect(config)
-  }
-
-  if (!resurrectRef.current) {
+  // Track config changes and reinitialize SDK when config updates
+  if (
+    !prevConfigRef.current ||
+    JSON.stringify(config) !== JSON.stringify(prevConfigRef.current)
+  ) {
+    prevConfigRef.current = config
     resurrectRef.current = new SorobanResurrect(config)
   }
 
@@ -77,7 +79,7 @@ export function SorobanResurrectProvider({ config, children }: SorobanResurrectP
     })
 
     return unsubscribe
-  }, [configStr])
+  }, [JSON.stringify(config)])
 
   const submitWithRestore = useCallback(
     async (transaction: Transaction, wallet: WalletAdapter): Promise<ResurrectResult> => {

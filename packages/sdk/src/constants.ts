@@ -12,3 +12,10 @@ export const POLL_TIMEOUT_MS = 60_000
 
 /** Multiplier applied to minResourceFee when building a restore transaction. */
 export const RESTORE_FEE_MULTIPLIER = 100
+
+/** Known Stellar/Soroban network passphrases for validation. */
+export const KNOWN_NETWORK_PASSPHRASES = [
+  'Test SDF Network ; September 2015',        // Testnet
+  'Public Global Stellar Network ; September 2015', // Mainnet
+  'Test SDF Future Network ; September 2015', // Futurenet
+]

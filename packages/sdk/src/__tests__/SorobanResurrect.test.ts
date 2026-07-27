@@ -7,6 +7,7 @@ import {
   Operation,
   Keypair,
   Transaction,
+  SorobanDataBuilder,
 } from '@stellar/stellar-sdk'
 import type { SorobanResurrectConfig, WalletAdapter } from '../types.js'
 import { executeWithRestore } from '../Executor.js'
@@ -211,6 +212,68 @@ describe('SorobanResurrect', () => {
       await expect(
         resurrect.buildRestoreTx(Keypair.random().publicKey(), makeSampleTx()),
       ).rejects.toThrow('No archived keys detected')
+    })
+
+    it('accepts optional simulationResponse to avoid state side-effects', async () => {
+      const mockKey = { toXDR: () => 'base64-key' }
+      const mockSorobanData = new SorobanDataBuilder().build()
+      const mockRestoreResponse = {
+        id: '1',
+        latestLedger: 100,
+        events: [],
+        _parsed: true,
+        transactionData: {
+          build: () => mockSorobanData,
+          getFootprint: () => ({ readOnly: () => [], readWrite: () => [mockKey] }),
+        },
+        minResourceFee: '100',
+        cost: { cpuInsns: '100', memBytes: '100' },
+        result: { auth: [], retval: { switch: () => 0 } },
+        restorePreamble: {
+          minResourceFee: '100',
+          transactionData: { build: () => mockSorobanData },
+        },
+      }
+
+      vi.spyOn(resurrect.server, 'getAccount').mockResolvedValue(
+        new Account(Keypair.random().publicKey(), '2') as never,
+      )
+
+      const initialState = resurrect.state
+      await resurrect.buildRestoreTx(Keypair.random().publicKey(), makeSampleTx(), mockRestoreResponse as never)
+      
+      // When providing simulationResponse, state should not change to 'simulating'
+      expect(resurrect.state).toBe(initialState)
+    })
+  })
+
+  describe('config option: restoreFeeMultiplier', () => {
+    it('defaults to 100', () => {
+      const r = new SorobanResurrect(testConfig)
+      expect(r.config.restoreFeeMultiplier).toBe(100)
+    })
+
+    it('accepts custom restoreFeeMultiplier', () => {
+      const r = new SorobanResurrect({
+        ...testConfig,
+        restoreFeeMultiplier: 50,
+      })
+      expect(r.config.restoreFeeMultiplier).toBe(50)
+    })
+  })
+
+  describe('config option: archiveDetectionMethod', () => {
+    it('defaults to simulation', () => {
+      const r = new SorobanResurrect(testConfig)
+      expect(r.config.archiveDetectionMethod).toBe('simulation')
+    })
+
+    it('accepts direct detection method', () => {
+      const r = new SorobanResurrect({
+        ...testConfig,
+        archiveDetectionMethod: 'direct',
+      })
+      expect(r.config.archiveDetectionMethod).toBe('direct')
     })
   })
 })
